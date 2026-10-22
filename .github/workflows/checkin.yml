@@ -1,0 +1,75 @@
+name: MiniMax 每日签到
+
+on:
+  schedule:
+    # 00:00–00:30 UTC = 北京时间 08:00–08:30，每 5 分钟醒一次
+    # 00:40 是保险档：万一前面几次没跑成，兜底补签
+    - cron: "0,5,10,15,20,25,30,40 0 * * *"
+  workflow_dispatch:      # 也可以手动触发
+
+permissions:
+  contents: read
+
+jobs:
+  checkin:
+    runs-on: ubuntu-latest
+    env:
+      MINIMAX_REGION: ${{ vars.MINIMAX_REGION || 'cn' }}
+      MINIMAX_TIMEZONE: ${{ vars.MINIMAX_TIMEZONE || 'Asia/Shanghai' }}
+      MINIMAX_NOTIFY_URL: ${{ secrets.MINIMAX_NOTIFY_URL }}
+      # 随机签到窗口（按 MINIMAX_TIMEZONE 计时）
+      SIGNIN_WINDOW: ${{ vars.SIGNIN_WINDOW || '08:00-08:30' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # ── 关键：把上一次运行保存的东西取回来 ──────────────────────────
+      # 缓存里有两个文件：
+      #   credentials.json —— 续期后的新令牌
+      #   state.json       —— 今天随机选中的那一刻
+      #
+      # 为什么要缓存而不是只用 Secret？
+      #   OAuth 续期时 refresh_token 会轮换，旧的那个立刻作废。
+      #   如果只存在 Secret 里不更新，第二次运行就会拿一个已作废的
+      #   refresh_token 去换令牌，直接 invalid_grant 死掉。
+      #
+      #   state.json 同理：没有它，每次运行都会重新随机一个时刻，
+      #   一天可能签好几次（服务端幂等不会多发积分，但会白白消耗调用）。
+      #
+      #   用默认 GITHUB_TOKEN 就能存，不需要额外的 PAT。
+      - name: 恢复缓存
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.minimax/checkin
+          key: minimax-cred-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: minimax-cred-
+
+      # 第一次运行时没有缓存，用 Secret 里的初始凭据兜底
+      - name: 初始化凭据
+        env:
+          CRED: ${{ secrets.MINIMAX_CREDENTIALS }}
+        run: |
+          mkdir -p ~/.minimax/checkin
+          if [ ! -f ~/.minimax/checkin/credentials.json ]; then
+            printf '%s' "$CRED" > ~/.minimax/checkin/credentials.json
+            chmod 600 ~/.minimax/checkin/credentials.json
+            echo "已从 Secret 初始化凭据"
+          else
+            echo "使用缓存中的凭据"
+          fi
+
+      # 到点了就签，没到点就跳过（--no-wait：不阻塞 runner）
+      - name: 签到
+        run: python3 minimax_checkin.py checkin --window "$SIGNIN_WINDOW" --no-wait --json
+
+      # 把续期后的凭据 + 今天随机选中的时刻存回去
+      - name: 保存状态
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.minimax/checkin
+          key: minimax-cred-${{ github.run_id }}-${{ github.run_attempt }}
