@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.venv/
+
+# 绝对不要提交凭据！
+credentials.json
+*.credentials.json
