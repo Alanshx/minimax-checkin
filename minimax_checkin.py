@@ -1166,18 +1166,24 @@ def window_gate(args, timezone: str) -> tuple:
     """决定这一轮要不要真的去签到。
 
     返回 (should_run, reason)。
-    每天在窗口内随机选一个时刻，并写进状态文件；同一天多次调用（CI 每 5 分钟跑一次）
-    会得到同一个时刻，不会重复签到。
+    每天在窗口内随机选一个时刻，并写进状态文件；同一天多次调用（CI 每天叫醒多次，
+    或者手动触发）会得到同一个时刻，不会重复签到。
 
-    窗口外的调用一律跳过——包括手动触发。这是关键：
-    之前用 now.replace(hour=...) 算目标时刻，当当前时间已经过了窗口，
-    「今天 08:xx」会被判定成「已到点」，导致窗口外也能签到。
+    三种情况：
+      1. 还没到今天选中的时刻  -> 等待（--wait）或跳过
+      2. 已到时刻              -> 执行
+      3. 已过整个窗口          -> 默认跳过；但带 --catch-up 且今天还没签过时，
+                                 立刻补签（调度器延迟导致错过了窗口时，宁可晚签也别漏签）
+
+    窗口外的调用一律不会「假装在窗口内」——之前用 now.replace(hour=...) 算目标时刻，
+    当当前时间已经过了窗口，「今天 08:xx」会被判定成「已到点」，导致窗口外也能签到。
     """
     if not getattr(args, "window", None):
         return True, ""
 
     start, end = parse_window(args.window)
     grace = int(getattr(args, "window_grace", 5) or 0)
+    catch_up = bool(getattr(args, "catch_up", False))
     now = _tz_now(timezone)
     today = now.strftime("%Y-%m-%d")
     now_min = now.hour * 60 + now.minute
@@ -1202,7 +1208,13 @@ def window_gate(args, timezone: str) -> tuple:
     if entry.get("done"):
         return False, "今天已在 %s 签过，跳过" % label
 
-    # ── 窗口外一律不签 ──────────────────────────────────────────
+    # ── 窗口结束之后 ────────────────────────────────────────────
+    if now_min > end + grace:
+        if catch_up:
+            return True, "已过签到窗口 %s，今天定在 %s，补签一次" % (win_label, label)
+        return False, "已错过签到窗口（%s 结束），今天不签" % win_label
+
+    # ── 窗口开始之前 ────────────────────────────────────────────
     if now_min < start:
         if getattr(args, "wait", False):
             wait_seconds = (target_dt - now).total_seconds()
@@ -1210,10 +1222,7 @@ def window_gate(args, timezone: str) -> tuple:
             time.sleep(max(0, wait_seconds))
         else:
             return False, "还没到签到窗口（%s 开始），今天定在 %s，跳过" % (win_label, label)
-    elif now_min > end + grace:
-        return False, "已错过签到窗口（%s 结束），今天不签" % win_label
-
-    if now_min < target:
+    elif now_min < target:
         if getattr(args, "wait", False):
             wait_seconds = (target_dt - now).total_seconds()
             log("今天定在 %s 签到，等待 %.0f 秒…" % (label, wait_seconds))
@@ -1651,6 +1660,8 @@ def build_parser() -> argparse.ArgumentParser:
                     help="随机时间窗口，如 08:00-08:30（按 --timezone 计时）")
     sp.add_argument("--window-grace", dest="window_grace", type=int, default=5,
                     help="窗口结束后的宽限分钟数（应对 runner 延迟，默认 5）")
+    sp.add_argument("--catch-up", dest="catch_up", action="store_true",
+                    help="错过窗口时若今天还没签，补签一次（避免整天漏签）")
     sp.add_argument("--wait", dest="wait", action="store_true", default=True,
                     help="没到随机时刻就等待（本地 cron 用，默认开）")
     sp.add_argument("--no-wait", dest="wait", action="store_false",
