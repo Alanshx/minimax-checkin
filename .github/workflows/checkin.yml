@@ -79,3 +79,17 @@ jobs:
         with:
           path: ~/.minimax/checkin
           key: minimax-cred-${{ github.run_id }}-${{ github.run_attempt }}
+
+      # 把当前有效凭据导出成 artifact。
+      # 为什么需要：OAuth 续期会轮换 refresh_token，旧的那个立刻作废。
+      # 只有 Actions 缓存里那份是活的，而缓存无法被外部程序下载。
+      # 有了这个 artifact，外部调度器就能拿到活凭据，独立完成签到。
+      # artifact 是私有的（只有仓库成员能下载），且只保留 1 天。
+      - name: 导出凭据
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: minimax-credentials
+          path: ~/.minimax/checkin/credentials.json
+          retention-days: 1
+          if-no-files-found: ignore
