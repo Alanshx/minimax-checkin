@@ -1,0 +1,9 @@
+name: probe
+on:
+  schedule:
+    - cron: "* * * * *"
+jobs:
+  p:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo probe
