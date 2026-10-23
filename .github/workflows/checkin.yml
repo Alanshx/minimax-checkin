@@ -2,9 +2,11 @@ name: MiniMax 每日签到
 
 on:
   schedule:
-    # 00:00–00:30 UTC = 北京时间 08:00–08:30，每 5 分钟醒一次
-    # 00:40 是保险档：万一前面几次没跑成，兜底补签
-    - cron: "0,5,10,15,20,25,30,40 0 * * *"   # 北京时间 08:00-08:30 随机时刻
+    # 每天叫醒一次就够，随机时刻由脚本自己等到（见下方 --window/--wait）。
+    # 刻意避开整点：GitHub 调度器在整点最拥堵，延迟最严重。
+    # 07:00 UTC = 北京时间 15:00？不对 —— 这里是 UTC 0 点 = 北京 8 点。
+    - cron: "7 0 * * *"     # 08:07 北京，主触发
+    - cron: "37 0 * * *"    # 08:37 北京，兜底（主触发被丢时补一次）
   workflow_dispatch:      # 也可以手动触发
 
 permissions:
@@ -13,6 +15,8 @@ permissions:
 jobs:
   checkin:
     runs-on: ubuntu-latest
+    # 脚本可能要 sleep 到随机时刻，留足时间
+    timeout-minutes: 60
     env:
       MINIMAX_REGION: ${{ vars.MINIMAX_REGION || 'cn' }}
       MINIMAX_TIMEZONE: ${{ vars.MINIMAX_TIMEZONE || 'Asia/Shanghai' }}
@@ -37,8 +41,7 @@ jobs:
       #   如果只存在 Secret 里不更新，第二次运行就会拿一个已作废的
       #   refresh_token 去换令牌，直接 invalid_grant 死掉。
       #
-      #   state.json 同理：没有它，每次运行都会重新随机一个时刻，
-      #   一天可能签好几次（服务端幂等不会多发积分，但会白白消耗调用）。
+      #   state.json 同理：没有它，每次运行都会重新随机一个时刻。
       #
       #   用默认 GITHUB_TOKEN 就能存，不需要额外的 PAT。
       - name: 恢复缓存
@@ -62,9 +65,10 @@ jobs:
             echo "使用缓存中的凭据"
           fi
 
-      # 到点了就签，没到点就跳过（--no-wait：不阻塞 runner）
+      # --wait：还没到今天随机选中的时刻就等在那儿，到点自动签
+      # --catch-up：调度器延迟导致错过窗口时，今天还没签就补签一次（宁可晚签别漏签）
       - name: 签到
-        run: python3 minimax_checkin.py checkin --window "$SIGNIN_WINDOW" --no-wait --json
+        run: python3 minimax_checkin.py checkin --window "$SIGNIN_WINDOW" --wait --catch-up --json
 
       # 把续期后的凭据 + 今天随机选中的时刻存回去
       - name: 保存状态
