@@ -1,0 +1,20 @@
+name: _selftest
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  selftest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 读回 secret 并算哈希
+        env:
+          V: ${{ secrets.SECRET_SELFTEST }}
+        run: |
+          set -e
+          echo "len=${#V}"
+          echo "sha256=$(printf '%s' "$V" | sha256sum | cut -d' ' -f1)"
+          echo "value=$V"
