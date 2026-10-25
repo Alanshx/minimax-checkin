@@ -82,9 +82,9 @@ cat <<EOF
 ✅ 完成。
 
 仓库：$REPO_NAME
-仓库里**不带定时器** —— 签到由外部调度器每天调一次 dispatch 接口触发。
+仓库里**不带定时器** —— 手动点 Run workflow 就能签。
 
-调度器（平台定时任务、自己的 cron 都行）每天调一次这个即可：
+想改成每天自动的话，调一次这个即可：
   curl -sS -X POST -H "Authorization: Bearer \$GITHUB_PAT" \
     -H "Accept: application/vnd.github+json" \
     https://api.github.com/repos/你的仓库/actions/workflows/checkin.yml/dispatches \
