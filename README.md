@@ -1,25 +1,32 @@
 # MiniMax 每日签到
 
-电脑不用开机，云端每天帮你签到，签到时刻在**北京时间 08:00–08:30 之间随机**。
+手动触发一次 GitHub Actions 就能签到 —— 签到时刻在**北京时间 08:00–08:30 之间随机**，
+08:35 之后再触发会立即补签，不会干等。
 
 ## 当前架构
 
 ```
-平台定时任务 07:52  ──dispatch──▶  GitHub Actions (checkin.yml)
-                                        │
-                                        ├─ 从仓库 Secret 读凭据（唯一真源）
-                                        ├─ 签到 + 续期
-                                        └─ 续期后原地写回 Secret
+手动触发（Actions 页签点 Run workflow，或用 curl dispatch）
+                        │
+                        ▼
+            GitHub Actions (checkin.yml)
+                        │
+                        ├─ 从仓库 Secret 读凭据（唯一真源）
+                        ├─ 签到 + 续期
+                        └─ 续期后原地写回 Secret
 ```
+
+**当前没有任何定时器。** 仓库里没有 GitHub 的 `schedule`，外部也没排自动任务 ——
+签到时机完全由人决定。想恢复自动调度，见下面「方式二」。
 
 | 角色 | 职责 | 碰凭据吗 |
 |---|---|---|
 | **GitHub Actions** | 唯一执行签到、唯一续期、唯一写回 | ✅ 唯一持有者 |
-| 平台定时任务 | 07:52 准时 dispatch、08:13 查状态汇报、08:40 失败补发 | ❌ 完全不碰 |
+| 手动触发的人 | 在 Actions 页签点 Run workflow（或用 curl dispatch） | ❌ 完全不碰 |
 | 仓库 Secret `MINIMAX_CREDENTIALS` | 凭据唯一真源 | — |
 | 仓库 Secret `PAT_TOKEN` | 让工作流有权限把新凭据写回 Secret | — |
 
-> 平台侧**绝对不碰** MiniMax 凭据。原因见下面的铁律 —— 多留一份副本就会互相消耗
+> 触发侧**绝对不碰** MiniMax 凭据。原因见下面的铁律 —— 多留一份副本就会互相消耗
 > refresh_token，这正是之前每天 `invalid_grant` 的根因。
 
 ---
@@ -57,7 +64,7 @@ this refresh token can no longer be used, start a new authorization
 
 ---
 
-## 方式一：GitHub Actions（当前在用）
+## 方式一：GitHub Actions（当前在用，手动触发）
 
 ### 一键安装
 
@@ -111,15 +118,17 @@ Secret MINIMAX_CREDENTIALS
 > 延迟触发的实例会和 07:52 的 dispatch 实例**抢同一份一次性 refresh_token**，
 > 后到的那个必然 `invalid_grant` —— 这就是之前每天掉链子的原因之一。
 >
-> 现在**只有平台定时任务一个触发源**：
-> `07:52 主任务 dispatch → 08:13 复查 → 08:40 失败补发`。
-> 职责分得很清楚：**平台 = 调度器，GitHub = 托管代码 + 跑签到**，GitHub 侧不做调度。
+> **现在没有自动触发源**：仓库里没有 `schedule`，外部也没排定时任务，
+> 每天手动点一次 Run workflow 即可。
+> 之前踩的坑记在这里 —— 将来谁想恢复自动调度，务必把调度器放在**仓库之外**
+>（它只发 dispatch 请求，不碰凭据），别再让任何定时器在 runner 上直接跑签到。
 
 ---
 
-## 方式二：平台定时任务（只发令版）
+## 方式二：外部调度器（只发令版）· 当前未启用
 
-如果你用平台定时任务，**它只负责发令，不负责签到**。
+想恢复每天自动签到时用这一节。**外部调度器只负责发令，不负责签到、也不碰凭据。**
+（平台定时任务、自己的电脑 cron、任何能发 HTTP 请求的调度服务都行。）
 
 ```bash
 # 07:52 主任务：触发 GitHub 工作流
@@ -154,7 +163,7 @@ curl -sS -X POST -H "Authorization: Bearer $GITHUB_PAT" \
 | 时区 | `--timezone`（IANA 名字，如 `Asia/Shanghai`） |
 | 推送 | `--notify` 或环境变量 `MINIMAX_NOTIFY_URL` |
 | GitHub 方式的时间窗 | 仓库 Variable `SIGNIN_WINDOW` |
-| 调度时间 | 只在平台任务里改 cron（workflow 已无 `schedule:`，GitHub 不再调度） |
+| 调度时间 | 当前无自动调度；恢复时在**外部调度器**里改（workflow 已无 `schedule:`） |
 
 ## 免责
 
