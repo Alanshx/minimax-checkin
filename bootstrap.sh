@@ -82,7 +82,13 @@ cat <<EOF
 ✅ 完成。
 
 仓库：$REPO_NAME
-每天 UTC 01:00（北京时间 09:00）自动签到，电脑不用开机。
+仓库里**不带定时器** —— 签到由外部调度器每天调一次 dispatch 接口触发。
+
+调度器（平台定时任务、自己的 cron 都行）每天调一次这个即可：
+  curl -sS -X POST -H "Authorization: Bearer \$GITHUB_PAT" \
+    -H "Accept: application/vnd.github+json" \
+    https://api.github.com/repos/你的仓库/actions/workflows/checkin.yml/dispatches \
+    -d '{"ref":"main"}'
 
 现在可以手动触发一次验证：
   gh workflow run checkin.yml
@@ -91,5 +97,5 @@ cat <<EOF
   gh run list
   gh run view --log
 
-想改时间：编辑 .github/workflows/checkin.yml 里的 cron 字段。
+想改时间：改外部调度器的时间（工作流里已经没有 cron 字段了）。
 EOF
