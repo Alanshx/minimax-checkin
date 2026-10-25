@@ -104,13 +104,16 @@ Secret MINIMAX_CREDENTIALS
 
 ### 关于 GitHub 的 cron 触发
 
-> ⚠️ GitHub 的 `schedule`（cron）触发器**是会触发的**，但经常大幅延迟。
-> 实测 08:07 的 cron 拖到了 **12:19** 才跑（延迟 4 小时 12 分），
-> 08:37 的那条拖到 12:56（延迟 4 小时 19 分）。
+> 🚫 **已经彻底移除了，仓库里不再有任何 `schedule:` 定时器。**
 >
-> 所以：**准时的触发靠外部调度器在 07:52 调 `workflow_dispatch`**，
-> 仓库里这两条 cron 只是兜底 —— 万一外部调度器挂了，延迟到窗口之后的 cron 跑起来时，
-> `--catch-up` 会立刻补签（宁可晚签也别漏签）。
+> 原因不只是"不准"：GitHub 的 `schedule` 触发器实测延迟极大
+> （08:07 的那条拖到 **12:19**，08:37 的拖到 **12:56**，延迟 4 小时多）。
+> 延迟触发的实例会和 07:52 的 dispatch 实例**抢同一份一次性 refresh_token**，
+> 后到的那个必然 `invalid_grant` —— 这就是之前每天掉链子的原因之一。
+>
+> 现在**只有平台定时任务一个触发源**：
+> `07:52 主任务 dispatch → 08:13 复查 → 08:40 失败补发`。
+> 职责分得很清楚：**平台 = 调度器，GitHub = 托管代码 + 跑签到**，GitHub 侧不做调度。
 
 ---
 
@@ -151,7 +154,7 @@ curl -sS -X POST -H "Authorization: Bearer $GITHUB_PAT" \
 | 时区 | `--timezone`（IANA 名字，如 `Asia/Shanghai`） |
 | 推送 | `--notify` 或环境变量 `MINIMAX_NOTIFY_URL` |
 | GitHub 方式的时间窗 | 仓库 Variable `SIGNIN_WINDOW` |
-| 调度时间 | 平台任务改 cron，或改 workflow 里的 `schedule:` |
+| 调度时间 | 只在平台任务里改 cron（workflow 已无 `schedule:`，GitHub 不再调度） |
 
 ## 免责
 
