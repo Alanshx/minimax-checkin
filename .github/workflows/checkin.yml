@@ -1,13 +1,10 @@
 name: MiniMax 每日签到
 
 on:
-  schedule:
-    # 备用触发。实测 GitHub 的 cron 会触发，但常常延迟几小时（最晚见到 +4h19m），
-    # 所以真正的「准时」触发靠外部调度器在 07:52 调 workflow_dispatch；
-    # 这两条 cron 只做兜底 —— 就算延迟到窗口之后，--catch-up 也会立刻补签。
-    - cron: "7 0 * * *"     # 08:07 北京，兜底
-    - cron: "37 0 * * *"    # 08:37 北京，兜底
-  workflow_dispatch:      # ← 主触发路径：外部调度器每天 07:52 调它
+  # 唯一触发路径：外部调度器（平台 cron）每天 07:52 调 workflow_dispatch。
+  # 不再用 GitHub 的 schedule 定时器 —— 实测它会延迟几小时（最晚见过 +4h19m），
+  # 延迟触发的实例会和 dispatch 实例抢同一份一次性 refresh_token，直接 invalid_grant。
+  workflow_dispatch:
 
 permissions:
   contents: read
